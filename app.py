@@ -1,26 +1,25 @@
 """
-RiskMind AI – Project Risk Analysis Assistant
-==============================================
-A beginner-friendly AI-powered project risk management tool.
-Uses Groq API (LLaMA models) to analyze project descriptions and
-generate a structured risk register following PMBOK-style reasoning.
-
-Author:  AI Software Engineering Assignment
-Version: 1.0.0
+RiskMind AI - Project Risk Analysis Assistant
+=============================================
+An AI-powered project risk management tool that analyzes project descriptions
+and generates a structured PMBOK-style risk register.
 """
 
-import os
 import json
+import os
 import re
-import streamlit as st
-import pandas as pd
-from groq import Groq
-from dotenv import load_dotenv
+from html import escape
 
-# ── Load environment variables from .env file ─────────────────────────────────
+import pandas as pd
+import streamlit as st
+from dotenv import load_dotenv
+from groq import Groq
+
+
+# Load environment variables
 load_dotenv()
 
-# ── Page configuration ─────────────────────────────────────────────────────────
+
 st.set_page_config(
     page_title="RiskMind AI",
     page_icon="🧠",
@@ -28,212 +27,367 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Global CSS injection ──────────────────────────────────────────────────────
-st.markdown("""
+
+GLOBAL_CSS = """
 <style>
-/* ── Import Inter font ── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 
-/* ── Base ── */
+:root {
+    --rm-bg-a: #f7f7ef;
+    --rm-bg-b: #fff4e6;
+    --rm-surface: #fffdf7;
+    --rm-surface-2: #fff7eb;
+    --rm-border: #f0dcc3;
+    --rm-text: #1a1e23;
+    --rm-muted: #4f4337;
+    --rm-brand: #ea5b2f;
+    --rm-brand-2: #0a7c8d;
+    --rm-ok: #228b4e;
+    --rm-warn: #dc8b00;
+    --rm-high: #d84a1b;
+    --rm-critical: #a32020;
+}
+
 html, body, [class*="css"] {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    font-family: 'IBM Plex Sans', sans-serif !important;
+    color: var(--rm-text);
 }
 
-/* ── Hide default Streamlit branding ── */
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
+.stApp {
+    background:
+        radial-gradient(1200px 520px at 88% -10%, rgba(234, 91, 47, 0.18), transparent 55%),
+        radial-gradient(900px 420px at 4% -6%, rgba(10, 124, 141, 0.12), transparent 50%),
+        linear-gradient(180deg, var(--rm-bg-a) 0%, var(--rm-bg-b) 100%);
+}
+
+#MainMenu, footer { visibility: hidden; }
+
 header[data-testid="stHeader"] {
-    background: rgba(14,17,23,0.85) !important;
-    backdrop-filter: blur(12px) !important;
+    background: rgba(255, 247, 235, 0.75) !important;
+    backdrop-filter: blur(8px) !important;
+    border-bottom: 1px solid rgba(240, 220, 195, 0.65) !important;
 }
 
-/* ── Sidebar ── */
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0f1119 0%, #161927 100%) !important;
-    border-right: 1px solid rgba(124,58,237,0.15) !important;
-}
-section[data-testid="stSidebar"] .stSelectbox label,
-section[data-testid="stSidebar"] .stMarkdown p,
-section[data-testid="stSidebar"] .stMarkdown li {
-    color: #b0b8c8 !important;
-    font-size: 0.88rem !important;
+    background: linear-gradient(180deg, #fffdf6 0%, #fff6eb 100%) !important;
+    border-right: 1px solid var(--rm-border) !important;
 }
 
-/* ── Metric cards ── */
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3,
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] li,
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] span {
+    color: var(--rm-text) !important;
+}
+
+section[data-testid="stSidebar"] .stMarkdown,
+section[data-testid="stSidebar"] .stMarkdown * {
+    color: var(--rm-text) !important;
+    opacity: 1 !important;
+}
+
+section[data-testid="stSidebar"] table,
+section[data-testid="stSidebar"] th,
+section[data-testid="stSidebar"] td {
+    color: var(--rm-text) !important;
+    opacity: 1 !important;
+}
+
+.stCaption,
+[data-testid="stCaptionContainer"] {
+    color: var(--rm-muted) !important;
+}
+
+h1, h2, h3, .stSubheader {
+    font-family: 'Sora', sans-serif !important;
+    letter-spacing: -0.02em;
+    color: var(--rm-text) !important;
+}
+
+.rm-hero {
+    position: relative;
+    border: 1px solid var(--rm-border);
+    border-radius: 22px;
+    background: linear-gradient(130deg, rgba(255, 255, 255, 0.86), rgba(255, 244, 226, 0.95));
+    box-shadow: 0 18px 50px rgba(111, 82, 37, 0.09);
+    padding: 30px 34px;
+    margin-top: 8px;
+    margin-bottom: 18px;
+    overflow: hidden;
+    animation: rm-fade-in 500ms ease-out;
+}
+
+.rm-hero::after {
+    content: "";
+    position: absolute;
+    right: -95px;
+    top: -95px;
+    width: 240px;
+    height: 240px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(10, 124, 141, 0.24) 0%, rgba(10, 124, 141, 0) 70%);
+}
+
+.rm-hero-title {
+    font-family: 'Sora', sans-serif;
+    font-size: clamp(1.7rem, 3vw, 2.4rem);
+    font-weight: 800;
+    margin: 0;
+}
+
+.rm-hero-subtitle {
+    color: var(--rm-muted);
+    margin-top: 8px;
+    font-size: 0.96rem;
+}
+
+.rm-chip-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+}
+
+.rm-chip {
+    border: 1px solid var(--rm-border);
+    background: rgba(255, 255, 255, 0.72);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 0.77rem;
+    color: var(--rm-muted);
+}
+
 div[data-testid="stMetric"] {
-    background: linear-gradient(135deg, rgba(124,58,237,0.08), rgba(99,102,241,0.06)) !important;
-    border: 1px solid rgba(124,58,237,0.18) !important;
+    background: linear-gradient(180deg, #fffef9, #fff7ea) !important;
+    border: 1px solid var(--rm-border) !important;
     border-radius: 14px !important;
-    padding: 18px 20px !important;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    padding: 16px 16px !important;
+    box-shadow: 0 6px 20px rgba(98, 73, 30, 0.06);
 }
-div[data-testid="stMetric"]:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(124,58,237,0.12);
-}
+
 div[data-testid="stMetric"] label {
-    color: #8b92a5 !important;
-    font-size: 0.78rem !important;
-    font-weight: 500 !important;
-    letter-spacing: 0.04em !important;
+    color: var(--rm-muted) !important;
     text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600 !important;
+    font-size: 0.71rem !important;
 }
-div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-    color: #f0f2f6 !important;
-    font-size: 1.7rem !important;
+
+div[data-testid="stMetricValue"] {
+    color: var(--rm-text) !important;
+    font-family: 'Sora', sans-serif;
+    font-weight: 700;
+}
+
+textarea {
+    border-radius: 14px !important;
+    border: 1px solid var(--rm-border) !important;
+    background: rgba(255, 255, 255, 0.86) !important;
+    color: var(--rm-text) !important;
+}
+
+textarea::placeholder {
+    color: #6a5f55 !important;
+    opacity: 1 !important;
+}
+
+textarea:focus {
+    border-color: rgba(10, 124, 141, 0.55) !important;
+    box-shadow: 0 0 0 2px rgba(10, 124, 141, 0.12) !important;
+}
+
+button[kind="primary"] {
+    background: linear-gradient(135deg, var(--rm-brand), #f2742a) !important;
+    border: none !important;
+    border-radius: 12px !important;
+    font-weight: 700 !important;
+    color: #ffffff !important;
+}
+
+button[kind="primary"] *,
+button[kind="secondary"] * {
+    color: inherit !important;
+    opacity: 1 !important;
+}
+
+button[kind="secondary"] {
+    background: #fffef9 !important;
+    border-radius: 12px !important;
+    border: 1px solid var(--rm-border) !important;
+    color: var(--rm-text) !important;
+}
+
+.stButton > button:not([kind="primary"]) {
+    background: #fffef9 !important;
+    color: var(--rm-text) !important;
+    border: 1px solid var(--rm-border) !important;
+}
+
+.stButton > button:not([kind="primary"]):hover {
+    background: #fff8ed !important;
+    border-color: #ddc3a2 !important;
+    color: #161a1f !important;
+}
+
+button[data-baseweb="tab"] {
+    border-radius: 10px 10px 0 0 !important;
+    color: var(--rm-muted) !important;
+    font-weight: 600 !important;
+    opacity: 1 !important;
+}
+
+button[data-baseweb="tab"][aria-selected="true"] {
+    color: var(--rm-brand) !important;
+    font-weight: 700 !important;
+    background: rgba(234, 91, 47, 0.1) !important;
+}
+
+section[data-testid="stFileUploader"] {
+    border: 2px dashed rgba(10, 124, 141, 0.38) !important;
+    border-radius: 14px !important;
+    background: rgba(10, 124, 141, 0.04) !important;
+}
+
+[data-testid="stDataFrame"] {
+    border: 1px solid var(--rm-border) !important;
+    border-radius: 14px !important;
+    overflow: hidden;
+}
+
+details {
+    border: 1px solid var(--rm-border) !important;
+    border-radius: 14px !important;
+    background: rgba(255, 255, 255, 0.75) !important;
+}
+
+details summary {
+    color: var(--rm-text) !important;
     font-weight: 700 !important;
 }
 
-/* ── Tabs ── */
-button[data-baseweb="tab"] {
-    font-family: 'Inter', sans-serif !important;
-    font-weight: 500 !important;
-    font-size: 0.9rem !important;
-    color: #8b92a5 !important;
-    border-radius: 10px 10px 0 0 !important;
-    padding: 10px 24px !important;
-}
-button[data-baseweb="tab"][aria-selected="true"] {
-    color: #a78bfa !important;
-    background: rgba(124,58,237,0.06) !important;
+@keyframes rm-fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
-/* ── Primary button ── */
-button[kind="primary"], .stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #7C3AED, #6366F1) !important;
-    border: none !important;
-    border-radius: 12px !important;
-    font-weight: 600 !important;
-    font-size: 0.95rem !important;
-    letter-spacing: 0.02em;
-    padding: 12px 24px !important;
-    transition: all 0.25s ease !important;
-}
-button[kind="primary"]:hover {
-    box-shadow: 0 6px 20px rgba(124,58,237,0.35) !important;
-    transform: translateY(-1px);
-}
+@media (max-width: 900px) {
+    .rm-hero {
+        padding: 22px;
+    }
 
-/* ── Text area ── */
-textarea {
-    border: 1px solid rgba(124,58,237,0.2) !important;
-    border-radius: 12px !important;
-    background: rgba(14,17,23,0.6) !important;
-    font-family: 'Inter', sans-serif !important;
-    font-size: 0.9rem !important;
-    transition: border-color 0.2s ease !important;
+    .rm-chip-row {
+        gap: 8px;
+    }
 }
-textarea:focus {
-    border-color: #7C3AED !important;
-    box-shadow: 0 0 0 2px rgba(124,58,237,0.15) !important;
-}
-
-/* ── File uploader ── */
-section[data-testid="stFileUploader"] {
-    border: 2px dashed rgba(124,58,237,0.25) !important;
-    border-radius: 14px !important;
-    padding: 20px !important;
-    background: rgba(124,58,237,0.03) !important;
-}
-
-/* ── Dataframe ── */
-[data-testid="stDataFrame"] {
-    border-radius: 14px !important;
-    overflow: hidden;
-    border: 1px solid rgba(124,58,237,0.12) !important;
-}
-
-/* ── Expander ── */
-details {
-    border: 1px solid rgba(124,58,237,0.12) !important;
-    border-radius: 14px !important;
-    background: rgba(14,17,23,0.4) !important;
-}
-details summary {
-    font-weight: 600 !important;
-    color: #c4b5fd !important;
-}
-
-/* ── Download button ── */
-.stDownloadButton > button {
-    background: transparent !important;
-    border: 1px solid rgba(124,58,237,0.3) !important;
-    border-radius: 12px !important;
-    color: #a78bfa !important;
-    font-weight: 500 !important;
-    transition: all 0.2s ease !important;
-}
-.stDownloadButton > button:hover {
-    background: rgba(124,58,237,0.1) !important;
-    border-color: #7C3AED !important;
-}
-
-/* ── Dividers ── */
-hr {
-    border-color: rgba(124,58,237,0.1) !important;
-    margin: 2rem 0 !important;
-}
-
-/* ── Subheaders ── */
-.stSubheader, h2, h3 {
-    color: #e2e0f0 !important;
-    font-weight: 600 !important;
-    letter-spacing: -0.01em !important;
-}
-
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(124,58,237,0.25); border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(124,58,237,0.45); }
 </style>
-""", unsafe_allow_html=True)
+"""
 
-# ── Colour / style constants ───────────────────────────────────────────────────
+
 PRIORITY_COLOURS = {
-    "Critical": "#EF4444",
-    "High":     "#F97316",
-    "Medium":   "#EAB308",
-    "Low":      "#22C55E",
+    "Critical": "#A32020",
+    "High": "#D84A1B",
+    "Medium": "#DC8B00",
+    "Low": "#228B4E",
 }
+
 
 CATEGORY_ICONS = {
-    "Schedule Risk":             "🗓️",
-    "Cost Risk":                 "💰",
-    "Scope Creep Risk":          "📐",
-    "Resource Risk":             "👥",
-    "Vendor / Procurement Risk": "🤝",
-    "Technical Risk":            "⚙️",
-    "Communication Risk":        "💬",
-    "Stakeholder Risk":          "🏢",
-    "Quality Risk":              "✅",
+    "Schedule Risk": "Calendar",
+    "Cost Risk": "Budget",
+    "Scope Creep Risk": "Scope",
+    "Resource Risk": "People",
+    "Vendor / Procurement Risk": "Vendor",
+    "Technical Risk": "Technical",
+    "Communication Risk": "Comms",
+    "Stakeholder Risk": "Stakeholder",
+    "Quality Risk": "Quality",
 }
 
-# ── Numeric weights for probability / impact ───────────────────────────────────
-LEVEL_WEIGHTS = {"Low": 1, "Medium": 2, "High": 3}
+
+LEVEL_WEIGHTS = {
+    "Low": 1,
+    "Medium": 2,
+    "High": 3,
+}
 
 
-# ════════════════════════════════════════════════════════════════════════════════
-#  HELPER FUNCTIONS
-# ════════════════════════════════════════════════════════════════════════════════
+def normalize_level(value: str, *, allow_critical: bool = False) -> str:
+    """Normalize model labels to supported values used by the UI."""
+    cleaned = str(value or "").strip().lower()
+    mapping = {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "critical": "Critical",
+    }
+    normalized = mapping.get(cleaned, "Medium")
+    if normalized == "Critical" and not allow_critical:
+        return "High"
+    return normalized
+
+
+EXAMPLE_PROJECT = """Project Title: E-Commerce Platform Relaunch
+
+Our company plans to relaunch our e-commerce website within the next 4 months to
+coincide with the holiday shopping season. The project involves migrating from our
+legacy PHP system to a new React/Node.js stack, integrating three third-party payment
+gateways (Stripe, PayPal, and a new regional provider), and redesigning the entire
+UI/UX based on customer research.
+
+The budget is $280,000. However, the finance team has flagged that a 15% budget
+reduction may be required due to broader company cost-cutting measures. The project
+team consists of 6 developers (2 of whom are contractors ending their contracts in
+6 weeks), 1 UX designer, and a part-time project manager who is also managing two
+other projects simultaneously.
+
+Key stakeholders include the CEO (who has requested several last-minute feature
+additions), the Head of Marketing (whose requirements are still being finalised),
+and an external vendor providing the new inventory management module. The vendor
+has not yet delivered the API documentation required for integration.
+
+Initial testing has revealed compatibility issues between the new payment gateway
+and our existing customer database schema. The team has no prior experience with the
+new tech stack and training has not yet been scheduled. There are no formal change
+control procedures in place, and team communication is currently handled via
+informal email chains with no project management tool in use.
+"""
+
+
+def init_state() -> None:
+    """Initialize session state keys once."""
+    if "project_input" not in st.session_state:
+        st.session_state["project_input"] = ""
+    if "analysis_result" not in st.session_state:
+        st.session_state["analysis_result"] = None
+    if "analysis_meta" not in st.session_state:
+        st.session_state["analysis_meta"] = {}
+
+
+def apply_styles() -> None:
+    """Inject app-wide CSS tokens and components."""
+    st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+
 
 def get_groq_client() -> Groq:
-    """Initialise and return a Groq client using the API key from .env or secrets."""
+    """Create a Groq client using GROQ_API_KEY from environment variables."""
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        st.error(
-            "⚠️  **GROQ_API_KEY not found.**  "
-            "Add it to your `.env` file or set it as an environment variable."
-        )
+        st.error("GROQ_API_KEY was not found. Add it to .env before running analysis.")
         st.stop()
     return Groq(api_key=api_key)
 
 
 def build_system_prompt() -> str:
-    """
-    Return the system prompt that instructs the LLM to act as a
-    PMBOK-style Project Risk Management Analyst.
-    """
+    """Return strict JSON output instructions for the LLM risk analyst role."""
     return """You are a senior Project Risk Management Analyst with 15+ years of experience 
 following PMBOK (Project Management Body of Knowledge) standards.
 
@@ -241,7 +395,7 @@ Your task is to analyze project descriptions, meeting notes, or scope documents 
 identify ALL potential project risks.
 
 STRICT RULES:
-1. Return ONLY valid JSON — no markdown fences, no extra text before or after.
+1. Return ONLY valid JSON - no markdown fences, no extra text before or after.
 2. Classify every risk into exactly ONE of these categories:
    - Schedule Risk
    - Cost Risk
@@ -276,7 +430,7 @@ JSON SCHEMA (return exactly this structure):
 
 
 def build_user_prompt(project_text: str) -> str:
-    """Wrap the user's project text in a clear instruction prompt."""
+    """Wrap user content for analysis with hard output constraints."""
     return f"""Analyze the following project description and produce the risk register JSON.
 
 PROJECT DESCRIPTION:
@@ -284,183 +438,145 @@ PROJECT DESCRIPTION:
 {project_text}
 \"\"\"
 
-Remember: Return ONLY the JSON object — nothing else."""
-
-
-def call_groq_api(client: Groq, project_text: str, model: str) -> dict:
-    """
-    Send the project description to the Groq API and return the parsed JSON response.
-
-    Parameters
-    ----------
-    client       : Groq client instance
-    project_text : raw user input
-    model        : Groq model identifier string
-
-    Returns
-    -------
-    dict  – parsed risk register data
-    """
-    with st.spinner("🤖 Analysing project risks — this may take a few seconds…"):
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": build_system_prompt()},
-                {"role": "user",   "content": build_user_prompt(project_text)},
-            ],
-            temperature=0.3,   # Lower = more consistent, structured output
-            max_tokens=4096,
-        )
-
-    raw_text = response.choices[0].message.content.strip()
-    return parse_llm_response(raw_text)
+Remember: Return ONLY the JSON object - nothing else."""
 
 
 def parse_llm_response(raw_text: str) -> dict:
-    """
-    Safely parse the LLM's raw text response into a Python dict.
-    Handles common formatting quirks (e.g. stray markdown fences).
-
-    Parameters
-    ----------
-    raw_text : str  – the raw string from the LLM
-
-    Returns
-    -------
-    dict – validated risk data
-
-    Raises
-    ------
-    ValueError if JSON cannot be parsed
-    """
-    # Strip markdown code fences if the model accidentally adds them
-    cleaned = re.sub(r"^```(?:json)?\s*", "", raw_text, flags=re.MULTILINE)
-    cleaned = re.sub(r"\s*```$",          "", cleaned,  flags=re.MULTILINE)
-    cleaned = cleaned.strip()
+    """Parse model output as JSON and validate required structure."""
+    cleaned = re.sub(r"```(?:json)?", "", raw_text, flags=re.IGNORECASE).strip()
+    cleaned = cleaned.strip("`").strip()
 
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError as exc:
-        raise ValueError(
-            f"Could not parse LLM response as JSON.\n\nRaw response:\n{raw_text}"
-        ) from exc
+        raise ValueError("The model response was not valid JSON.") from exc
 
-    # Basic validation
     if "risks" not in data or not isinstance(data["risks"], list):
-        raise ValueError("Response JSON is missing the 'risks' array.")
+        raise ValueError("The model response JSON must contain a risks list.")
 
     return data
 
 
+def call_groq_api(client: Groq, project_text: str, model: str) -> dict:
+    """Call Groq chat completion and return validated JSON payload."""
+    with st.spinner("Analyzing project risks. This may take a few seconds..."):
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": build_system_prompt()},
+                {"role": "user", "content": build_user_prompt(project_text)},
+            ],
+            temperature=0.3,
+            max_tokens=4096,
+        )
+
+    raw_text = (response.choices[0].message.content or "").strip()
+    if not raw_text:
+        raise ValueError("The model returned an empty response.")
+    return parse_llm_response(raw_text)
+
+
 def calculate_priority_score(probability: str, impact: str) -> int:
-    """
-    Compute a numeric priority score: Probability × Impact (1–9 scale).
-
-    Parameters
-    ----------
-    probability : str  – "Low" | "Medium" | "High"
-    impact      : str  – "Low" | "Medium" | "High"
-
-    Returns
-    -------
-    int  – score between 1 and 9
-    """
-    p = LEVEL_WEIGHTS.get(probability, 1)
-    i = LEVEL_WEIGHTS.get(impact, 1)
-    return p * i
+    """Compute score in range 1-9 using Probability x Impact."""
+    return LEVEL_WEIGHTS.get(probability, 1) * LEVEL_WEIGHTS.get(impact, 1)
 
 
 def risks_to_dataframe(risks: list[dict]) -> pd.DataFrame:
-    """
-    Convert the list of risk dicts to a clean Pandas DataFrame,
-    adding a numeric priority score column.
-
-    Parameters
-    ----------
-    risks : list of risk dicts from the LLM
-
-    Returns
-    -------
-    pd.DataFrame
-    """
+    """Normalize risk records and convert to a sorted DataFrame."""
     rows = []
-    for idx, risk in enumerate(risks, start=1):
-        prob    = risk.get("probability", "Medium")
-        impact  = risk.get("impact",      "Medium")
-        score   = calculate_priority_score(prob, impact)
-        cat     = risk.get("category", "")
-        icon    = CATEGORY_ICONS.get(cat, "⚠️")
+    for index, risk in enumerate(risks, start=1):
+        probability = normalize_level(risk.get("probability", "Medium"))
+        impact = normalize_level(risk.get("impact", "Medium"))
+        priority = normalize_level(risk.get("priority", "Medium"), allow_critical=True)
+        category = (risk.get("category") or "Uncategorized").strip()
 
-        rows.append({
-            "#":             idx,
-            "Risk Name":     risk.get("risk_name",     "Unknown"),
-            "Category":      f"{icon} {cat}",
-            "Evidence":      risk.get("evidence",      "—"),
-            "Probability":   prob,
-            "Impact":        impact,
-            "Priority":      risk.get("priority",      "Medium"),
-            "Score (P×I)":   score,
-            "Recommendation": risk.get("recommendation", "—"),
-        })
+        rows.append(
+            {
+                "#": index,
+                "Risk Name": risk.get("risk_name", "Unknown"),
+                "Category": f"{CATEGORY_ICONS.get(category, 'General')} · {category}",
+                "Evidence": risk.get("evidence", "-"),
+                "Probability": probability,
+                "Impact": impact,
+                "Priority": priority,
+                "Score (P*I)": calculate_priority_score(probability, impact),
+                "Recommendation": risk.get("recommendation", "-"),
+            }
+        )
 
     df = pd.DataFrame(rows)
-    # Sort by score descending so highest risks appear first
-    df = df.sort_values("Score (P×I)", ascending=False).reset_index(drop=True)
-    df["#"] = df.index + 1   # Re-number after sort
+    if df.empty:
+        return df
+    df = df.sort_values("Score (P*I)", ascending=False).reset_index(drop=True)
+    df["#"] = df.index + 1
     return df
 
 
-def colour_priority(val: str) -> str:
-    """Return a CSS background-color style string based on priority label."""
-    colour = PRIORITY_COLOURS.get(val, "#CCCCCC")
-    text   = "#FFFFFF" if val in ("Critical", "High") else "#000000"
-    return f"background-color: {colour}; color: {text}; font-weight: bold; border-radius: 4px;"
+def colour_priority(value: str) -> str:
+    """Return CSS style for priority level cell."""
+    colour = PRIORITY_COLOURS.get(value, "#9aa0a6")
+    text = "#ffffff" if value in ("Critical", "High") else "#111111"
+    return f"background-color: {colour}; color: {text}; font-weight: 700;"
 
 
 def style_dataframe(df: pd.DataFrame) -> "pd.io.formats.style.Styler":
-    """Apply conditional colouring to the Priority column."""
+    """Apply visual styling to risk register table."""
     return (
-        df.style
-          .applymap(colour_priority, subset=["Priority"])
-          .set_properties(**{"text-align": "left"})
-          .set_table_styles([
-              {"selector": "thead th",
-               "props": [("background-color", "#1E1E2E"), ("color", "white"),
-                         ("font-weight", "bold"), ("text-align", "left")]},
-          ])
-          .hide(axis="index")
+        df.style.applymap(colour_priority, subset=["Priority"])
+        .set_properties(**{"text-align": "left"})
+        .set_table_styles(
+            [
+                {
+                    "selector": "thead th",
+                    "props": [
+                        ("background-color", "#fff3df"),
+                        ("color", "#2b2b2b"),
+                        ("font-weight", "700"),
+                        ("text-align", "left"),
+                    ],
+                }
+            ]
+        )
+        .hide(axis="index")
+    )
+
+
+def render_header() -> None:
+    """Render the top hero region."""
+    st.markdown(
+        """
+        <div class="rm-hero">
+            <h1 class="rm-hero-title">RiskMind AI</h1>
+            <p class="rm-hero-subtitle">A clearer and faster workspace for project risk discovery, scoring, and mitigation planning.</p>
+            <div class="rm-chip-row">
+                <span class="rm-chip">PMBOK categories</span>
+                <span class="rm-chip">Structured JSON output</span>
+                <span class="rm-chip">CSV export ready</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
 
 def render_summary_card(summary: str) -> None:
-    """Render the project summary as a styled card."""
+    """Display summary card with escaped content."""
+    safe_summary = escape(summary).replace("\n", "<br>")
     st.markdown(
         f"""
         <div style="
-            background: linear-gradient(135deg, rgba(124,58,237,0.06), rgba(99,102,241,0.04));
-            border: 1px solid rgba(124,58,237,0.15);
+            border: 1px solid #f0dcc3;
+            background: linear-gradient(120deg, rgba(255,255,255,0.95), rgba(255,247,234,0.92));
             border-radius: 16px;
-            padding: 24px 28px;
-            margin: 8px 0 24px 0;
-            color: #cbd5e1;
-            font-size: 0.92rem;
-            line-height: 1.7;
-            position: relative;
-            overflow: hidden;
+            padding: 20px 22px;
+            margin: 10px 0 18px 0;
         ">
-            <div style="
-                position: absolute; top: 0; left: 0; width: 4px; height: 100%;
-                background: linear-gradient(180deg, #7C3AED, #6366F1);
-                border-radius: 16px 0 0 16px;
-            "></div>
-            <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
-                <span style="
-                    background: rgba(124,58,237,0.12); border-radius:10px;
-                    padding: 6px 10px; font-size: 1.1rem;
-                ">📋</span>
-                <span style="color:#c4b5fd; font-weight:600; font-size:0.95rem; letter-spacing:0.02em;">Project Summary</span>
+            <div style="font-family:'Sora',sans-serif; font-weight:700; margin-bottom:8px; color:#20262d;">
+                Project Summary
             </div>
-            {summary}
+            <div style="color:#3f3730; line-height:1.7; font-size:0.92rem;">
+                {safe_summary}
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -468,389 +584,270 @@ def render_summary_card(summary: str) -> None:
 
 
 def render_metrics(df: pd.DataFrame) -> None:
-    """Display quick-glance KPI metrics above the risk table."""
-    total    = len(df)
+    """Render KPI cards for quick risk distribution scan."""
+    total = len(df)
     critical = len(df[df["Priority"] == "Critical"])
-    high     = len(df[df["Priority"] == "High"])
-    medium   = len(df[df["Priority"] == "Medium"])
-    avg_score = df["Score (P×I)"].mean()
+    high = len(df[df["Priority"] == "High"])
+    medium = len(df[df["Priority"] == "Medium"])
+    avg_score = df["Score (P*I)"].mean() if total else 0
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Total Risks",    total)
-    c2.metric("Critical",       critical)
-    c3.metric("High",           high)
-    c4.metric("Medium",         medium)
-    c5.metric("Avg Score",      f"{avg_score:.1f}")
+    col_1, col_2, col_3, col_4, col_5 = st.columns(5)
+    col_1.metric("Total Risks", total)
+    col_2.metric("Critical", critical)
+    col_3.metric("High", high)
+    col_4.metric("Medium", medium)
+    col_5.metric("Avg Score", f"{avg_score:.1f}")
 
 
 def render_risk_chart(df: pd.DataFrame) -> None:
-    """Render a horizontal bar chart of risk scores."""
-    chart_data = (
-        df[["Risk Name", "Score (P×I)"]]
-        .set_index("Risk Name")
-        .sort_values("Score (P×I)")
-    )
-    st.bar_chart(chart_data, color="#7C3AED", height=320)
+    """Render score chart sorted from low to high for visual contrast."""
+    chart_data = df[["Risk Name", "Score (P*I)"]].set_index("Risk Name").sort_values("Score (P*I)")
+    st.bar_chart(chart_data, color="#EA5B2F", height=340)
 
-
-# ════════════════════════════════════════════════════════════════════════════════
-#  SIDEBAR
-# ════════════════════════════════════════════════════════════════════════════════
 
 def render_sidebar() -> str:
-    """Render the sidebar and return the selected model name."""
+    """Render sidebar controls and return selected model value."""
     with st.sidebar:
-        st.image(
-            "https://img.icons8.com/color/96/artificial-intelligence.png",
-            width=64,
-        )
-        st.title("⚙️ Settings")
-        st.divider()
-
+        st.title("Settings")
         model = st.selectbox(
-            "🤖 LLM Model",
-            options=[
-                "llama-3.1-8b-instant",
-                "llama-3.3-70b-versatile",
-            ],
+            "Model",
+            options=["llama-3.1-8b-instant", "llama-3.3-70b-versatile"],
             index=0,
             help=(
-                "**llama-3.1-8b-instant** – faster, lighter model (default).\n\n"
-                "**llama-3.3-70b-versatile** – slower but more nuanced analysis."
+                "llama-3.1-8b-instant: faster analysis.\n\n"
+                "llama-3.3-70b-versatile: slower but more nuanced output."
             ),
         )
 
-        st.divider()
-        st.markdown("### 📘 How to use")
+        st.markdown("### Workflow")
         st.markdown(
             """
-1. Paste a **project description**, meeting notes, or scope document.
-2. Click **Analyse Project Risks**.
-3. Review the AI-generated **risk register**.
-4. Download as **CSV** if needed.
+1. Add project text or upload files.
+2. Run Analyze Project Risks.
+3. Review risks, chart, and details.
+4. Export risk register as CSV.
             """
         )
 
-        st.divider()
-        st.markdown("### 🎯 Risk Priority Score")
+        st.markdown("### Score Matrix")
         st.markdown(
             """
-| Score | Label     |
-|-------|-----------|
-| 9     | 🔴 Critical |
-| 6     | 🟠 High     |
-| 3–4   | 🟡 Medium   |
-| 1–2   | 🟢 Low      |
-
-Score = **Probability × Impact** (each 1–3)
+| Score | Label |
+|---|---|
+| 9 | Critical |
+| 6 | High |
+| 3-4 | Medium |
+| 1-2 | Low |
             """
         )
-
-        st.divider()
-        st.caption("RiskMind AI v1.0 · Powered by Groq + LLaMA")
 
     return model
 
 
-# ════════════════════════════════════════════════════════════════════════════════
-#  EXAMPLE PROJECT DESCRIPTIONS
-# ════════════════════════════════════════════════════════════════════════════════
-
-EXAMPLE_PROJECT = """Project Title: E-Commerce Platform Relaunch
-
-Our company plans to relaunch our e-commerce website within the next 4 months to 
-coincide with the holiday shopping season. The project involves migrating from our 
-legacy PHP system to a new React/Node.js stack, integrating three third-party payment 
-gateways (Stripe, PayPal, and a new regional provider), and redesigning the entire 
-UI/UX based on customer research.
-
-The budget is $280,000. However, the finance team has flagged that a 15% budget 
-reduction may be required due to broader company cost-cutting measures. The project 
-team consists of 6 developers (2 of whom are contractors ending their contracts in 
-6 weeks), 1 UX designer, and a part-time project manager who is also managing two 
-other projects simultaneously.
-
-Key stakeholders include the CEO (who has requested several last-minute feature 
-additions), the Head of Marketing (whose requirements are still being finalised), 
-and an external vendor providing the new inventory management module. The vendor 
-has not yet delivered the API documentation required for integration.
-
-Initial testing has revealed compatibility issues between the new payment gateway 
-and our existing customer database schema. The team has no prior experience with the 
-new tech stack and training has not yet been scheduled. There are no formal change 
-control procedures in place, and team communication is currently handled via 
-informal email chains with no project management tool in use.
-"""
-
-
-# ════════════════════════════════════════════════════════════════════════════════
-#  MAIN APPLICATION
-# ════════════════════════════════════════════════════════════════════════════════
-
-def main() -> None:
-    """Entry point – renders the full Streamlit application."""
-
-    # ── Sidebar ──────────────────────────────────────────────────────────────
-    selected_model = render_sidebar()
-
-    # ── Header ───────────────────────────────────────────────────────────────
-    st.markdown(
-        """
-        <div style="text-align:center; padding: 24px 0 8px 0;">
-            <div style="
-                display:inline-flex; align-items:center; justify-content:center;
-                width:64px; height:64px; border-radius:18px;
-                background: linear-gradient(135deg, #7C3AED, #6366F1);
-                margin-bottom: 16px;
-                box-shadow: 0 8px 32px rgba(124,58,237,0.25);
-            ">
-                <span style="font-size:2rem;">🧠</span>
-            </div>
-            <h1 style="
-                font-size:2.2rem; margin:0 0 6px 0; font-weight:700;
-                background: linear-gradient(135deg, #f0f2f6, #c4b5fd);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-                letter-spacing: -0.02em;
-            ">
-                RiskMind AI
-            </h1>
-            <p style="color:#6b7280; font-size:0.9rem; margin:0; font-weight:400; letter-spacing:0.02em;">
-                AI-powered project risk analysis
-            </p>
-        </div>
-        <div style="
-            width:80px; height:3px; margin:20px auto 28px auto;
-            background: linear-gradient(90deg, #7C3AED, #6366F1);
-            border-radius: 4px;
-        "></div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # ── Input section ─────────────────────────────────────────────────────────
-    st.subheader("📝 Project Description")
-
-    tab_paste, tab_upload = st.tabs(["✏️ Paste Text", "📁 Upload Files"])
+def render_input_area() -> str:
+    """Render text and upload inputs, then return combined analysis text."""
+    st.subheader("Project Input")
+    tab_paste, tab_upload = st.tabs(["Paste Text", "Upload Files"])
 
     with tab_paste:
-        col_input, col_example = st.columns([5, 1])
-        with col_example:
-            if st.button("📄 Load Example", help="Fill in a sample project description"):
+        col_left, col_right = st.columns([5, 1])
+        with col_right:
+            if st.button("Load Example", use_container_width=True):
                 st.session_state["project_input"] = EXAMPLE_PROJECT
 
-        with col_input:
-            st.caption("Paste your project description, meeting notes, or scope document below.")
+        with col_left:
+            st.caption("Paste project scope, notes, or planning documents.")
 
         pasted_text = st.text_area(
             label="Project Description",
             key="project_input",
-            height=240,
-            placeholder=(
-                "Paste your project description, meeting notes, or scope document here…\n\n"
-                "Tip: Use the '📄 Load Example' button on the right to see a demo."
-            ),
+            height=250,
+            placeholder="Paste your project description or notes here...",
             label_visibility="collapsed",
         )
 
+        word_count = len((pasted_text or "").split())
+        char_count = len(pasted_text or "")
+        st.caption(f"Input length: {word_count} words, {char_count} characters")
+
+    uploaded_text = ""
     with tab_upload:
-        st.caption(
-            "Upload one or more text files (.txt, .md, .csv, .log, .json). "
-            "Their contents will be combined for analysis."
-        )
+        st.caption("Upload .txt, .md, .csv, .json, or .log files. Contents are merged for analysis.")
         uploaded_files = st.file_uploader(
-            "Upload project documents",
-            type=["txt", "md", "csv", "log", "json"],
+            "Upload project files",
+            type=["txt", "md", "csv", "json", "log"],
             accept_multiple_files=True,
             label_visibility="collapsed",
         )
-        uploaded_text = ""
+
         if uploaded_files:
-            file_contents = []
-            for uf in uploaded_files:
+            chunks = []
+            for file_obj in uploaded_files:
                 try:
-                    content = uf.read().decode("utf-8", errors="replace")
-                    file_contents.append(f"--- {uf.name} ---\n{content}")
+                    content = file_obj.read().decode("utf-8", errors="replace")
+                    chunks.append(f"--- {file_obj.name} ---\n{content}")
                 except Exception:
-                    st.warning(f"⚠️ Could not read **{uf.name}** — skipped.")
-            uploaded_text = "\n\n".join(file_contents)
-            if uploaded_text.strip():
-                with st.expander("📄 Preview uploaded content", expanded=False):
-                    st.text(uploaded_text[:3000] + ("…" if len(uploaded_text) > 3000 else ""))
+                    st.warning(f"Could not read {file_obj.name}. Skipped.")
 
-    # Combine: uploaded files take priority; pasted text used as fallback
-    project_text = uploaded_text.strip() if uploaded_text and uploaded_text.strip() else (pasted_text or "").strip()
+            uploaded_text = "\n\n".join(chunks).strip()
+            if uploaded_text:
+                with st.expander("Preview Uploaded Content", expanded=False):
+                    preview = uploaded_text[:3000]
+                    suffix = "..." if len(uploaded_text) > 3000 else ""
+                    st.text(preview + suffix)
 
-    # ── Analyse button ────────────────────────────────────────────────────────
-    analyse_clicked = st.button(
-        "🔍 Analyse Project Risks",
-        type="primary",
-        use_container_width=True,
-        disabled=not bool(project_text),
-    )
+    return uploaded_text if uploaded_text else (pasted_text or "").strip()
 
-    if not project_text:
-        st.info("ℹ️  Paste a project description or upload files above, then click **Analyse Project Risks**.")
-        return
 
-    if not analyse_clicked:
-        return
-
-    # ── API call ──────────────────────────────────────────────────────────────
+def run_analysis(project_text: str, model: str) -> None:
+    """Execute AI analysis and persist normalized results in session state."""
     client = get_groq_client()
-
-    try:
-        data = call_groq_api(client, project_text.strip(), selected_model)
-    except ValueError as exc:
-        st.error(f"❌ **Parsing Error:** {exc}")
-        return
-    except Exception as exc:
-        st.error(f"❌ **API Error:** {exc}")
-        return
-
-    # ── Extract results ───────────────────────────────────────────────────────
-    summary = data.get("project_summary", "No summary provided.")
-    risks   = data.get("risks", [])
+    payload = call_groq_api(client, project_text, model)
+    risks = payload.get("risks", [])
 
     if not risks:
-        st.warning("⚠️  The model returned no risks. Try a more detailed project description.")
+        st.warning("The model returned no risks. Try a more detailed project description.")
         return
 
     df = risks_to_dataframe(risks)
+    st.session_state["analysis_result"] = {
+        "summary": payload.get("project_summary", "No summary provided."),
+        "df": df,
+    }
+    st.session_state["analysis_meta"] = {
+        "model": model,
+        "source_text": project_text,
+    }
 
-    # ── Project summary ───────────────────────────────────────────────────────
-    render_summary_card(summary)
 
-    # ── KPI metrics ───────────────────────────────────────────────────────────
-    render_metrics(df)
-
-    st.divider()
-
-    # ── Risk register table ───────────────────────────────────────────────────
-    st.subheader("Risk Register")
-    st.caption(
-        f"**{len(df)} risks** identified, sorted by priority score. "
-        "Score = Probability × Impact (max 9)."
-    )
-
-    # Styled table
-    st.dataframe(
-        style_dataframe(df),
-        use_container_width=True,
-        height=min(100 + len(df) * 58, 620),  # Dynamic height, capped at 620px
-    )
-
-    st.divider()
-
-    # ── Risk score bar chart ──────────────────────────────────────────────────
-    st.subheader("Risk Priority Chart")
-    st.caption("Score distribution across all identified risks.")
-    render_risk_chart(df)
-
-    st.divider()
-
-    # ── Detailed risk cards ───────────────────────────────────────────────────
+def render_risk_cards(df: pd.DataFrame) -> None:
+    """Render expanded cards for risk-level details with safe text escaping."""
     with st.expander("Detailed Risk Breakdown", expanded=False):
         for _, row in df.iterrows():
-            priority_colour = PRIORITY_COLOURS.get(row["Priority"], "#888")
-            text_col = '#fff' if row['Priority'] in ('Critical', 'High') else '#000'
+            priority = str(row["Priority"])
+            priority_colour = PRIORITY_COLOURS.get(priority, "#999999")
+            text_colour = "#ffffff" if priority in ("Critical", "High") else "#1f2328"
+
+            risk_name = escape(str(row["Risk Name"]))
+            category = escape(str(row["Category"]))
+            probability = escape(str(row["Probability"]))
+            impact = escape(str(row["Impact"]))
+            score = escape(str(row["Score (P*I)"]))
+            evidence = escape(str(row["Evidence"]))
+            recommendation = escape(str(row["Recommendation"]))
+            risk_index = escape(str(row["#"]))
+
             st.markdown(
                 f"""
                 <div style="
-                    background: linear-gradient(135deg, rgba(30,30,46,0.8), rgba(22,25,39,0.9));
-                    border: 1px solid rgba(124,58,237,0.1);
-                    border-radius: 16px;
-                    padding: 20px 24px;
-                    margin-bottom: 14px;
-                    position: relative;
-                    overflow: hidden;
+                    border: 1px solid #f0dcc3;
+                    border-radius: 14px;
+                    background: linear-gradient(120deg, rgba(255,255,255,0.94), rgba(255,248,237,0.9));
+                    padding: 18px;
+                    margin-bottom: 12px;
                 ">
-                    <div style="
-                        position:absolute; top:0; left:0; width:4px; height:100%;
-                        background:{priority_colour};
-                        border-radius:16px 0 0 16px;
-                    "></div>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                        <div style="display:flex; align-items:center; gap:12px;">
-                            <span style="
-                                background:rgba(124,58,237,0.1); border-radius:10px;
-                                padding:6px 11px; font-size:0.82rem; font-weight:700; color:#a78bfa;
-                            ">{row['#']}</span>
-                            <strong style="font-size:0.98rem; color:#f0f2f6; font-weight:600;">
-                                {row['Risk Name']}
-                            </strong>
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="background:#fff1dc; border:1px solid #f0dcc3; border-radius:8px; padding:3px 8px; font-weight:700; color:#5f4c39;">#{risk_index}</span>
+                            <strong style="font-size:0.96rem; color:#1f2328;">{risk_name}</strong>
                         </div>
-                        <span style="
-                            background:{priority_colour};
-                            color:{text_col};
-                            padding: 4px 14px;
-                            border-radius: 20px;
-                            font-size: 0.72rem;
-                            font-weight: 700;
-                            letter-spacing: 0.04em;
-                            text-transform: uppercase;
-                        ">{row['Priority']}</span>
+                        <span style="background:{priority_colour}; color:{text_colour}; border-radius:999px; padding:5px 12px; font-size:0.72rem; font-weight:700; letter-spacing:0.04em;">{priority}</span>
                     </div>
-                    <div style="
-                        display:flex; gap:16px; flex-wrap:wrap;
-                        color:#8b92a5; font-size:0.8rem; margin-bottom:14px;
-                        padding: 8px 14px;
-                        background: rgba(0,0,0,0.15); border-radius:10px;
-                    ">
-                        <span>{row['Category']}</span>
-                        <span>P: <b style='color:#c4b5fd'>{row['Probability']}</b></span>
-                        <span>I: <b style='color:#c4b5fd'>{row['Impact']}</b></span>
-                        <span>Score: <b style='color:#c4b5fd'>{row['Score (P×I)']}</b></span>
+
+                    <div style="font-size:0.8rem; color:#4b4036; margin-bottom:9px;">{category} | P: <b>{probability}</b> | I: <b>{impact}</b> | Score: <b>{score}</b></div>
+
+                    <div style="font-size:0.84rem; color:#3f3730; margin-bottom:8px; line-height:1.6;">
+                        <b style="display:block; text-transform:uppercase; font-size:0.7rem; color:#5f4f41; letter-spacing:0.06em;">Evidence</b>
+                        {evidence}
                     </div>
-                    <div style="color:#94a3b8; font-size:0.86rem; margin-bottom:10px; line-height:1.6;">
-                        <span style="color:#8b92a5; font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;">Evidence</span><br>
-                        {row['Evidence']}
-                    </div>
-                    <div style="
-                        color:#86efac; font-size:0.86rem; line-height:1.6;
-                        padding:10px 14px; background:rgba(34,197,94,0.06);
-                        border-radius:10px; border:1px solid rgba(34,197,94,0.1);
-                    ">
-                        <span style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:#4ade80;">Mitigation</span><br>
-                        {row['Recommendation']}
+
+                    <div style="font-size:0.84rem; color:#264b2f; line-height:1.6; background:rgba(34,139,78,0.08); border:1px solid rgba(34,139,78,0.18); border-radius:10px; padding:10px 12px;">
+                        <b style="display:block; text-transform:uppercase; font-size:0.7rem; color:#228b4e; letter-spacing:0.06em;">Mitigation</b>
+                        {recommendation}
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-    # ── CSV download ──────────────────────────────────────────────────────────
+
+def render_results(selected_model: str, project_text: str) -> None:
+    """Render full analysis output if a stored result exists."""
+    result = st.session_state.get("analysis_result")
+    meta = st.session_state.get("analysis_meta", {})
+    if not result:
+        return
+
+    stale_result = meta.get("source_text") and meta.get("source_text") != project_text
+    if stale_result:
+        st.warning("The displayed results are from a previous input. Run analysis again to refresh.")
+
+    summary = result["summary"]
+    df = result["df"]
+
+    render_summary_card(summary)
+    render_metrics(df)
+
+    st.divider()
+    st.subheader("Risk Register")
+    st.caption(f"{len(df)} risks identified. Sorted by score using Probability x Impact.")
+    st.dataframe(style_dataframe(df), use_container_width=True, height=min(100 + len(df) * 58, 640))
+
+    st.divider()
+    st.subheader("Risk Priority Chart")
+    st.caption("Score distribution across identified risks.")
+    render_risk_chart(df)
+
+    st.divider()
+    render_risk_cards(df)
+
     csv_data = df.to_csv(index=False).encode("utf-8")
-    dl_col1, dl_col2 = st.columns([3, 1])
-    with dl_col2:
+    c1, c2 = st.columns([3, 1])
+    with c2:
         st.download_button(
-            label="⬇  Download CSV",
+            label="Download CSV",
             data=csv_data,
             file_name="riskmind_risk_register.csv",
             mime="text/csv",
             use_container_width=True,
         )
-    with dl_col1:
-        st.markdown(
-            f"""
-            <div style="
-                display:flex; align-items:center; gap:12px;
-                padding:12px 0; color:#6b7280; font-size:0.82rem;
-            ">
-                <span style="
-                    background:rgba(34,197,94,0.1); color:#4ade80;
-                    border-radius:20px; padding:4px 12px;
-                    font-weight:600; font-size:0.75rem;
-                ">✓ Complete</span>
-                <span>Model: <b style="color:#a78bfa">{selected_model}</b></span>
-                <span>•</span>
-                <span><b style="color:#e2e0f0">{len(df)}</b> risks identified</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
+    with c1:
+        st.caption(
+            f"Analysis model: {meta.get('model', selected_model)} | Risk count: {len(df)}"
         )
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+def main() -> None:
+    """Render complete Streamlit UI and orchestrate analysis flow."""
+    init_state()
+    apply_styles()
+
+    selected_model = render_sidebar()
+    render_header()
+
+    project_text = render_input_area()
+
+    analyze_clicked = st.button(
+        "Analyze Project Risks",
+        type="primary",
+        use_container_width=True,
+        disabled=not bool(project_text.strip()),
+    )
+
+    if not project_text.strip():
+        st.info("Add project content in Paste Text or Upload Files, then run analysis.")
+
+    if analyze_clicked:
+        try:
+            run_analysis(project_text.strip(), selected_model)
+            st.success("Risk analysis complete.")
+        except ValueError as exc:
+            st.error(f"Parsing error: {exc}")
+        except Exception as exc:
+            st.error(f"API error: {exc}")
+
+    render_results(selected_model, project_text.strip())
+
+
 if __name__ == "__main__":
     main()

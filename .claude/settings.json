@@ -5,7 +5,8 @@
       "Read(//c/Program Files \\(x86\\)/**)",
       "Read(//c/Users/HP/Desktop/PM/riskmind-ai/$APPDATA/**)",
       "Read(//c/Users/HP/AppData/**)",
-      "Read(//c/Users/HP/.claude/projects/c--Users-HP-Desktop-PM-riskmind-ai/memory/**)"
+      "Read(//c/Users/HP/.claude/projects/c--Users-HP-Desktop-PM-riskmind-ai/memory/**)",
+      "Bash(gh run:*)"
     ]
   }
 }

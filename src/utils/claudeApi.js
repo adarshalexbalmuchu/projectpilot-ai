@@ -6,7 +6,7 @@
  */
 
 const API_URL = 'https://api.anthropic.com/v1/messages'
-const MODEL = 'claude-sonnet-4-5'
+const MODEL = 'claude-sonnet-4-6'
 
 const SYSTEM_PROMPT = `You are an expert project manager and business analyst.
 Analyze the provided project document and respond ONLY with valid JSON.
@@ -35,7 +35,9 @@ async function callClaude(userPrompt, signal) {
 
   if (!res.ok) {
     const err = await res.text()
-    throw new Error(`Claude API error ${res.status}: ${err}`)
+    let detail = err
+    try { detail = JSON.parse(err)?.error?.message ?? err } catch {}
+    throw new Error(`Claude API ${res.status}: ${detail}`)
   }
 
   const data = await res.json()
